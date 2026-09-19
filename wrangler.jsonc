@@ -1,7 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"main": ".open-next/worker.js",
-	"name": "greece-chauffeur",
+	"name": "greece-chauffer-transfers",
 	"compatibility_date": "2026-09-19",
 	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
 	"assets": {
@@ -13,7 +13,7 @@
 			// Self-reference service binding, required by the adapter's caching layer
 			// see https://opennext.js.org/cloudflare/caching
 			"binding": "WORKER_SELF_REFERENCE",
-			"service": "greece-chauffeur"
+			"service": "greece-chauffer-transfers"
 		}
 	]
 }
