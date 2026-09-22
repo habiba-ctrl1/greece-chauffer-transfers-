@@ -15,5 +15,12 @@
 			"binding": "WORKER_SELF_REFERENCE",
 			"service": "greece-chauffer-transfers"
 		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "greece-chauffer-transfers-db",
+			"database_id": "964e39b5-25c0-4a5b-afae-f62e182216a3"
+		}
 	]
 }
