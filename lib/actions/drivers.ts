@@ -4,8 +4,9 @@
 "use server";
 
 import { getDb } from "@/lib/db";
-import { generateId } from "@/lib/utils";
+import { generateId, operationalDate } from "@/lib/utils";
 import { recordActivity } from "@/lib/actions/activity";
+import { DRIVER_STATUSES } from "@/lib/constants";
 import type { Driver, DriverStatus } from "@/lib/schema";
 
 export interface DriverWithStats extends Driver {
@@ -242,6 +243,56 @@ export async function updateDriver(
 	} catch (e) {
 		console.error("Error updating driver:", e);
 		return { success: false, error: "Failed to update driver. Please try again." };
+	}
+}
+
+export interface FleetDriverSummary {
+	byStatus: Record<DriverStatus, number>;
+	/** Active drivers whose license_expiry falls within the next 30 days. */
+	licenseExpiring: { id: string; name: string; license_expiry: string }[];
+}
+
+/**
+ * Dashboard "Fleet Status" driver data: counts by status plus drivers
+ * whose license is expiring soon. Uses drivers.license_expiry — the same
+ * field the driver detail page already checks — rather than the
+ * driver_documents verification table, which has no write path anywhere
+ * in the product yet and would only ever read back as zero.
+ */
+export async function getFleetDriverSummary(): Promise<FleetDriverSummary> {
+	const zeroed = Object.fromEntries(
+		DRIVER_STATUSES.map((s) => [s, 0])
+	) as Record<DriverStatus, number>;
+
+	try {
+		const db = await getDb();
+		const soon = operationalDate(30);
+		const today = operationalDate(0);
+
+		const [statusRes, expiringRes] = await Promise.all([
+			db.prepare("SELECT status, COUNT(*) as count FROM drivers GROUP BY status").all<{ status: DriverStatus; count: number }>(),
+			db
+				.prepare(
+					`SELECT id, name, license_expiry FROM drivers
+					 WHERE license_expiry IS NOT NULL AND license_expiry >= ? AND license_expiry <= ?
+					 ORDER BY license_expiry ASC
+					 LIMIT 5`
+				)
+				.bind(today, soon)
+				.all<{ id: string; name: string; license_expiry: string }>(),
+		]);
+
+		for (const row of statusRes.results || []) {
+			if (row.status in zeroed) zeroed[row.status] = row.count;
+		}
+
+		return {
+			byStatus: zeroed,
+			licenseExpiring: expiringRes.results || [],
+		};
+	} catch (e) {
+		console.error("Error in getFleetDriverSummary:", e);
+		return { byStatus: zeroed, licenseExpiring: [] };
 	}
 }
 

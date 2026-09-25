@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db";
 import { generateId } from "@/lib/utils";
 import { getCurrentUser } from "@/lib/auth/session";
 import { recordActivity } from "@/lib/actions/activity";
+import { BOOKING_STATUSES } from "@/lib/constants";
 import type {
 	Booking,
 	BookingStatus,
@@ -35,6 +36,10 @@ export interface GetBookingsFilter {
 	payment_status?: string;
 	unassigned?: boolean;
 	today_only?: boolean;
+	/** Inclusive pickup_date lower bound, e.g. from operationalDate(). */
+	date_from?: string;
+	/** Inclusive pickup_date upper bound, e.g. from operationalDate(). */
+	date_to?: string;
 	search?: string;
 	customer_id?: string;
 	driver_id?: string;
@@ -106,6 +111,16 @@ export async function getBookings(
 
 		if (filter.today_only) {
 			whereClause += " AND b.pickup_date = date('now')";
+		}
+
+		if (filter.date_from) {
+			whereClause += " AND b.pickup_date >= ?";
+			params.push(filter.date_from);
+		}
+
+		if (filter.date_to) {
+			whereClause += " AND b.pickup_date <= ?";
+			params.push(filter.date_to);
 		}
 
 		if (filter.customer_id) {
@@ -580,6 +595,205 @@ export async function getAvailableVehicles(): Promise<Vehicle[]> {
 			.all<Vehicle>();
 		return results || [];
 	} catch {
+		return [];
+	}
+}
+
+/**
+ * Fetch a joined, dispatch-ready booking list for a fixed pickup_date range
+ * (inclusive), ordered for an operations board. Used by the dashboard for
+ * both "Today's Operations" (fromDate === toDate) and "Upcoming Transfers".
+ * Excludes cancelled/declined so the board only shows live work.
+ */
+export async function getScheduleBookings(
+	fromDate: string,
+	toDate: string,
+	limit = 50
+): Promise<BookingWithDetails[]> {
+	try {
+		const db = await getDb();
+		const { results } = await db
+			.prepare(
+				`SELECT
+					b.*,
+					c.name as customer_name,
+					c.email as customer_email,
+					c.phone as customer_phone,
+					d.name as driver_name,
+					d.phone as driver_phone,
+					v.make as vehicle_make,
+					v.model as vehicle_model,
+					v.registration as vehicle_registration
+				FROM bookings b
+				JOIN customers c ON c.id = b.customer_id
+				LEFT JOIN drivers d ON d.id = b.driver_id
+				LEFT JOIN vehicles v ON v.id = b.vehicle_id
+				WHERE b.pickup_date >= ? AND b.pickup_date <= ?
+					AND b.status NOT IN ('cancelled', 'declined')
+				ORDER BY b.pickup_date ASC, b.pickup_time ASC
+				LIMIT ?`
+			)
+			.bind(fromDate, toDate, limit)
+			.all<BookingWithDetails>();
+		return results || [];
+	} catch (e) {
+		console.error("Error in getScheduleBookings:", e);
+		return [];
+	}
+}
+
+/**
+ * Count live bookings per status for the dashboard pipeline strip.
+ * Always returns every known status (zero-filled) so the UI doesn't have
+ * to guard against missing keys.
+ */
+export async function getBookingPipelineCounts(): Promise<Record<BookingStatus, number>> {
+	const zeroed = Object.fromEntries(
+		BOOKING_STATUSES.map((s) => [s, 0])
+	) as Record<BookingStatus, number>;
+
+	try {
+		const db = await getDb();
+		const { results } = await db
+			.prepare("SELECT status, COUNT(*) as count FROM bookings GROUP BY status")
+			.all<{ status: BookingStatus; count: number }>();
+
+		for (const row of results || []) {
+			if (row.status in zeroed) {
+				zeroed[row.status] = row.count;
+			}
+		}
+		return zeroed;
+	} catch (e) {
+		console.error("Error in getBookingPipelineCounts:", e);
+		return zeroed;
+	}
+}
+
+export interface PendingSettlementBooking {
+	id: string;
+	booking_number: string;
+	customer_name: string;
+	total: number;
+	pickup_date: string | null;
+}
+
+/**
+ * Completed trips whose payment is still pending or partial — the
+ * "trip finished, money not settled" gap the audit flagged (no Payments
+ * UI exists yet, so this is the closest real signal available today).
+ */
+export async function getPendingSettlementBookings(limit = 50): Promise<PendingSettlementBooking[]> {
+	try {
+		const db = await getDb();
+		const { results } = await db
+			.prepare(
+				`SELECT b.id, b.booking_number, c.name as customer_name, b.total, b.pickup_date
+				 FROM bookings b
+				 JOIN customers c ON c.id = b.customer_id
+				 WHERE b.status = 'completed' AND b.payment_status IN ('pending', 'partially_paid')
+				 ORDER BY b.pickup_date DESC
+				 LIMIT ?`
+			)
+			.bind(limit)
+			.all<PendingSettlementBooking>();
+		return results || [];
+	} catch (e) {
+		console.error("Error in getPendingSettlementBookings:", e);
+		return [];
+	}
+}
+
+export interface OperationalConflict {
+	resourceType: "driver" | "vehicle";
+	resourceName: string;
+	pickupDate: string;
+	pickupTime: string | null;
+	bookingAId: string;
+	bookingANumber: string;
+	bookingBId: string;
+	bookingBNumber: string;
+}
+
+/**
+ * Flag bookings where the same driver or vehicle is committed to two
+ * different live bookings at the exact same pickup date+time. This is a
+ * deliberately conservative check: the schema has no trip-duration or
+ * dropoff-time field, so a reliable "overlapping window" conflict check
+ * (e.g. a 09:00 and 09:30 pickup with the same driver) isn't possible
+ * without guessing a trip duration. Only exact-time double-bookings —
+ * which are unambiguous — are reported. Read-only: never changes an
+ * assignment.
+ */
+export async function getOperationalConflicts(limit = 10): Promise<OperationalConflict[]> {
+	try {
+		const db = await getDb();
+		const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+		const liveExclusion = "('cancelled', 'declined', 'completed', 'no_show')";
+
+		const [driverRes, vehicleRes] = await Promise.all([
+			db
+				.prepare(
+					`SELECT
+						b1.id as bookingAId, b1.booking_number as bookingANumber,
+						b2.id as bookingBId, b2.booking_number as bookingBNumber,
+						d.name as resourceName, b1.pickup_date as pickupDate, b1.pickup_time as pickupTime
+					FROM bookings b1
+					JOIN bookings b2
+						ON b1.driver_id = b2.driver_id
+						AND b1.pickup_date = b2.pickup_date
+						AND b1.pickup_time = b2.pickup_time
+						AND b1.id < b2.id
+					JOIN drivers d ON d.id = b1.driver_id
+					WHERE b1.driver_id IS NOT NULL
+						AND b1.pickup_date >= ?
+						AND b1.status NOT IN ${liveExclusion}
+						AND b2.status NOT IN ${liveExclusion}
+					ORDER BY b1.pickup_date ASC, b1.pickup_time ASC
+					LIMIT ?`
+				)
+				.bind(fromDate, limit)
+				.all<{
+					bookingAId: string; bookingANumber: string;
+					bookingBId: string; bookingBNumber: string;
+					resourceName: string; pickupDate: string; pickupTime: string | null;
+				}>(),
+			db
+				.prepare(
+					`SELECT
+						b1.id as bookingAId, b1.booking_number as bookingANumber,
+						b2.id as bookingBId, b2.booking_number as bookingBNumber,
+						(v.make || ' ' || v.model) as resourceName, b1.pickup_date as pickupDate, b1.pickup_time as pickupTime
+					FROM bookings b1
+					JOIN bookings b2
+						ON b1.vehicle_id = b2.vehicle_id
+						AND b1.pickup_date = b2.pickup_date
+						AND b1.pickup_time = b2.pickup_time
+						AND b1.id < b2.id
+					JOIN vehicles v ON v.id = b1.vehicle_id
+					WHERE b1.vehicle_id IS NOT NULL
+						AND b1.pickup_date >= ?
+						AND b1.status NOT IN ${liveExclusion}
+						AND b2.status NOT IN ${liveExclusion}
+					ORDER BY b1.pickup_date ASC, b1.pickup_time ASC
+					LIMIT ?`
+				)
+				.bind(fromDate, limit)
+				.all<{
+					bookingAId: string; bookingANumber: string;
+					bookingBId: string; bookingBNumber: string;
+					resourceName: string; pickupDate: string; pickupTime: string | null;
+				}>(),
+		]);
+
+		const conflicts: OperationalConflict[] = [
+			...(driverRes.results || []).map((r) => ({ ...r, resourceType: "driver" as const })),
+			...(vehicleRes.results || []).map((r) => ({ ...r, resourceType: "vehicle" as const })),
+		];
+
+		return conflicts.slice(0, limit);
+	} catch (e) {
+		console.error("Error in getOperationalConflicts:", e);
 		return [];
 	}
 }

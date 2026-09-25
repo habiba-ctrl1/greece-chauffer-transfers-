@@ -1,8 +1,26 @@
 import Link from "next/link";
-import { getDb } from "@/lib/db";
-import { formatCurrency, formatDate } from "@/lib/utils";
-import { BOOKING_STATUS_LABELS, BOOKING_STATUS_BADGES } from "@/lib/constants";
-import type { BookingWithDetails, ActivityLog } from "@/lib/schema";
+import { operationalDate, formatDate } from "@/lib/utils";
+import { BOOKING_STATUSES, DRIVER_STATUSES, VEHICLE_STATUSES } from "@/lib/constants";
+import {
+	getScheduleBookings,
+	getBookingPipelineCounts,
+	getOperationalConflicts,
+	getPendingSettlementBookings,
+} from "@/lib/actions/bookings";
+import { getQuoteAttention } from "@/lib/actions/quotes";
+import { getFleetDriverSummary } from "@/lib/actions/drivers";
+import { getVehicleFleetSummary } from "@/lib/actions/vehicles";
+import { getFinancialSnapshot } from "@/lib/actions/invoices";
+import { getRecentActivityFeed } from "@/lib/actions/activity";
+import { RefreshButton } from "@/components/admin/dashboard/refresh-button";
+import { AttentionPanel } from "@/components/admin/dashboard/attention-panel";
+import { KpiCards } from "@/components/admin/dashboard/kpi-cards";
+import { ScheduleTable } from "@/components/admin/dashboard/schedule-table";
+import { PipelineStrip } from "@/components/admin/dashboard/pipeline-strip";
+import { QuoteAttentionCard } from "@/components/admin/dashboard/quote-attention-card";
+import { FleetStatusCard } from "@/components/admin/dashboard/fleet-status-card";
+import { FinancialOverviewCard } from "@/components/admin/dashboard/financial-overview-card";
+import { ActivityFeedCard } from "@/components/admin/dashboard/activity-feed-card";
 
 export const dynamic = "force-dynamic";
 
@@ -10,332 +28,294 @@ export const metadata = {
 	title: "Dashboard — Greece Chauffeur Operations",
 };
 
-interface DashboardStats {
-	todayBookings: number;
-	pendingQuotes: number;
-	activeDrivers: number;
-	revenueMtd: number;
-	unassignedBookings: number;
-	todaySchedule: BookingWithDetails[];
-	recentActivity: ActivityLog[];
+const LIVE_EXCLUDED_STATUSES = new Set(["cancelled", "declined", "completed", "no_show"]);
+
+function zeroed<T extends string>(keys: readonly T[]): Record<T, number> {
+	return Object.fromEntries(keys.map((k) => [k, 0])) as Record<T, number>;
 }
 
-async function getDashboardData(): Promise<DashboardStats> {
-	try {
-		const db = await getDb();
+async function getDashboardData() {
+	const today = operationalDate(0);
+	const weekEnd = operationalDate(7);
 
-		const [
-			todayBookingsRes,
-			pendingQuotesRes,
-			activeDriversRes,
-			revenueRes,
-			unassignedRes,
-			todayScheduleRes,
-			activityRes,
-		] = await Promise.allSettled([
-			db.prepare("SELECT COUNT(*) as count FROM bookings WHERE pickup_date = date('now')").first<{ count: number }>(),
-			db.prepare("SELECT COUNT(*) as count FROM quotes WHERE status IN ('draft', 'sent')").first<{ count: number }>(),
-			db.prepare("SELECT COUNT(*) as count FROM drivers WHERE status = 'active'").first<{ count: number }>(),
-			db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed' AND payment_date >= date('now', 'start of month')").first<{ total: number }>(),
-			db.prepare("SELECT COUNT(*) as count FROM bookings WHERE driver_id IS NULL AND status IN ('confirmed', 'awaiting_confirmation')").first<{ count: number }>(),
-			db.prepare(`
-				SELECT 
-					b.*,
-					c.name as customer_name,
-					c.email as customer_email,
-					c.phone as customer_phone,
-					d.name as driver_name,
-					d.phone as driver_phone,
-					v.make as vehicle_make,
-					v.model as vehicle_model,
-					v.registration as vehicle_registration
-				FROM bookings b
-				JOIN customers c ON c.id = b.customer_id
-				LEFT JOIN drivers d ON d.id = b.driver_id
-				LEFT JOIN vehicles v ON v.id = b.vehicle_id
-				WHERE b.pickup_date = date('now')
-				ORDER BY b.pickup_time ASC
-				LIMIT 6
-			`).all<BookingWithDetails>(),
-			db.prepare(`
-				SELECT * FROM activity_logs 
-				ORDER BY created_at DESC 
-				LIMIT 6
-			`).all<ActivityLog>(),
-		]);
+	const [
+		scheduleRes,
+		pipelineRes,
+		conflictsRes,
+		quoteAttentionRes,
+		fleetDriversRes,
+		fleetVehiclesRes,
+		financialRes,
+		pendingSettlementRes,
+		activityRes,
+	] = await Promise.allSettled([
+		getScheduleBookings(today, weekEnd, 100),
+		getBookingPipelineCounts(),
+		getOperationalConflicts(10),
+		getQuoteAttention(5),
+		getFleetDriverSummary(),
+		getVehicleFleetSummary(),
+		getFinancialSnapshot(),
+		getPendingSettlementBookings(50),
+		getRecentActivityFeed(8),
+	]);
 
-		return {
-			todayBookings: todayBookingsRes.status === "fulfilled" ? (todayBookingsRes.value?.count ?? 0) : 0,
-			pendingQuotes: pendingQuotesRes.status === "fulfilled" ? (pendingQuotesRes.value?.count ?? 0) : 0,
-			activeDrivers: activeDriversRes.status === "fulfilled" ? (activeDriversRes.value?.count ?? 0) : 0,
-			revenueMtd: revenueRes.status === "fulfilled" ? (revenueRes.value?.total ?? 0) : 0,
-			unassignedBookings: unassignedRes.status === "fulfilled" ? (unassignedRes.value?.count ?? 0) : 0,
-			todaySchedule: todayScheduleRes.status === "fulfilled" ? (todayScheduleRes.value?.results || []) : [],
-			recentActivity: activityRes.status === "fulfilled" ? (activityRes.value?.results || []) : [],
-		};
-	} catch {
-		return {
-			todayBookings: 0,
-			pendingQuotes: 0,
-			activeDrivers: 0,
-			revenueMtd: 0,
-			unassignedBookings: 0,
-			todaySchedule: [],
-			recentActivity: [],
-		};
+	// Log rejections so a failed query is visible in server logs without
+	// crashing the page — each section below renders its own inline
+	// error/empty state instead of an unhandled exception.
+	for (const [label, res] of [
+		["schedule", scheduleRes],
+		["pipeline", pipelineRes],
+		["conflicts", conflictsRes],
+		["quoteAttention", quoteAttentionRes],
+		["fleetDrivers", fleetDriversRes],
+		["fleetVehicles", fleetVehiclesRes],
+		["financial", financialRes],
+		["pendingSettlement", pendingSettlementRes],
+		["activity", activityRes],
+	] as const) {
+		if (res.status === "rejected") {
+			console.error(`Dashboard section "${label}" failed:`, res.reason);
+		}
 	}
+
+	const schedule = scheduleRes.status === "fulfilled" ? scheduleRes.value : [];
+	const scheduleFailed = scheduleRes.status === "rejected";
+
+	const pipeline = pipelineRes.status === "fulfilled" ? pipelineRes.value : zeroed(BOOKING_STATUSES);
+	const pipelineFailed = pipelineRes.status === "rejected";
+
+	const conflicts = conflictsRes.status === "fulfilled" ? conflictsRes.value : [];
+	const conflictsFailed = conflictsRes.status === "rejected";
+
+	const quoteAttention =
+		quoteAttentionRes.status === "fulfilled"
+			? quoteAttentionRes.value
+			: { pendingResponse: [], pendingResponseTotal: 0, expiringSoon: [], expiringSoonTotal: 0 };
+	const quoteAttentionFailed = quoteAttentionRes.status === "rejected";
+
+	const fleetDrivers =
+		fleetDriversRes.status === "fulfilled"
+			? fleetDriversRes.value
+			: { byStatus: zeroed(DRIVER_STATUSES), licenseExpiring: [] };
+	const fleetDriversFailed = fleetDriversRes.status === "rejected";
+
+	const fleetVehicles =
+		fleetVehiclesRes.status === "fulfilled"
+			? fleetVehiclesRes.value
+			: { byStatus: zeroed(VEHICLE_STATUSES), total: 0 };
+	const fleetVehiclesFailed = fleetVehiclesRes.status === "rejected";
+
+	const financial =
+		financialRes.status === "fulfilled"
+			? financialRes.value
+			: { revenueMtd: 0, revenueAvailable: false, paid: 0, outstanding: 0, overdue: 0 };
+	const financialFailed = financialRes.status === "rejected";
+
+	const pendingSettlement = pendingSettlementRes.status === "fulfilled" ? pendingSettlementRes.value : [];
+	const pendingSettlementFailed = pendingSettlementRes.status === "rejected";
+
+	const activity = activityRes.status === "fulfilled" ? activityRes.value : [];
+	const activityFailed = activityRes.status === "rejected";
+
+	// Derived, in-memory slices of the one schedule query — keeps this to a
+	// single joined booking query for Today + Upcoming + three of the
+	// Attention Required signals, rather than issuing several near-duplicate
+	// queries for the same 7-day window.
+	const todayRows = schedule.filter((b) => b.pickup_date === today);
+	const upcomingRows = schedule.filter((b) => b.pickup_date && b.pickup_date > today);
+	const unassignedRows = schedule.filter(
+		(b) => !b.driver_name && (b.status === "confirmed" || b.status === "awaiting_confirmation")
+	);
+	const vehicleMissingRows = schedule.filter(
+		(b) => b.driver_name && !b.vehicle_make && !LIVE_EXCLUDED_STATUSES.has(b.status)
+	);
+	const driverUnconfirmedRows = todayRows.filter((b) => b.status === "driver_assigned");
+
+	return {
+		today,
+		weekEnd,
+		todayRows,
+		upcomingRows,
+		scheduleFailed,
+		pipeline,
+		pipelineFailed,
+		conflicts,
+		conflictsFailed,
+		quoteAttention,
+		quoteAttentionFailed,
+		fleetDrivers,
+		fleetDriversFailed,
+		fleetVehicles,
+		fleetVehiclesFailed,
+		financial,
+		financialFailed,
+		pendingSettlement,
+		pendingSettlementFailed,
+		activity,
+		activityFailed,
+		unassignedRows,
+		vehicleMissingRows,
+		driverUnconfirmedRows,
+	};
 }
 
 export default async function DashboardPage() {
 	const data = await getDashboardData();
+	const upcomingHref = `/admin/bookings?from=${operationalDate(1)}&to=${operationalDate(7)}`;
+	const pendingSettlementAmount = data.pendingSettlement.reduce((sum, b) => sum + b.total, 0);
 
 	return (
 		<div>
-			{/* Page Header */}
+			{/* Header */}
 			<div className="page-header">
 				<div>
-					<h1>Operations Overview</h1>
+					<h1>Dashboard</h1>
 					<p style={{ color: "var(--text-tertiary)", fontSize: "0.8125rem", marginTop: "0.25rem" }}>
-						Real-time dispatch, schedule monitor & fleet tracking
+						Overview of today&apos;s operations, upcoming transfers, bookings and financial activity.
 					</p>
 				</div>
-				<div className="page-header-actions">
+				<div className="page-header-actions" style={{ alignItems: "center" }}>
+					<span style={{ fontSize: "0.8125rem", color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
+						{formatDate(data.today)}
+					</span>
+					<RefreshButton />
 					<Link href="/admin/bookings/new" className="btn btn-primary">
-						<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<line x1="12" y1="5" x2="12" y2="19"></line>
-							<line x1="5" y1="12" x2="19" y2="12"></line>
-						</svg>
-						<span>New Booking</span>
+						+ New Booking
 					</Link>
 					<Link href="/admin/quotes/new" className="btn btn-secondary">
-						<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<line x1="12" y1="5" x2="12" y2="19"></line>
-							<line x1="5" y1="12" x2="19" y2="12"></line>
-						</svg>
-						<span>New Quote</span>
+						+ New Quote
 					</Link>
 				</div>
 			</div>
 
-			{/* Operational Alerts if any */}
-			{data.unassignedBookings > 0 && (
-				<div style={{ marginBottom: "1.5rem" }}>
-					<div
-						style={{
-							background: "var(--status-warning-bg)",
-							color: "var(--status-warning)",
-							border: "1px solid rgba(230, 119, 0, 0.2)",
-							borderRadius: "var(--radius-md)",
-							padding: "0.875rem 1.25rem",
-							display: "flex",
-							alignItems: "center",
-							justifyContent: "space-between",
-						}}
-					>
-						<div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-							<span style={{ fontSize: "1.25rem" }}>⚠️</span>
-							<div>
-								<strong>{data.unassignedBookings} Confirmed Booking(s) Require Driver Assignment</strong>
-								<div style={{ fontSize: "0.75rem", opacity: 0.85 }}>
-									Assign vehicles and chauffeurs to prevent dispatch delays.
-								</div>
-							</div>
-						</div>
-						<Link href="/admin/bookings?unassigned=true" className="btn btn-sm btn-secondary">
-							Review Bookings
-						</Link>
-					</div>
+			{/* Priority 1 — urgent operational issues */}
+			<AttentionPanel
+				unassignedRows={data.unassignedRows}
+				vehicleMissingRows={data.vehicleMissingRows}
+				driverUnconfirmedRows={data.driverUnconfirmedRows}
+				pendingSettlement={data.pendingSettlement}
+				quoteExpiringSoon={data.quoteAttention.expiringSoon}
+				quoteExpiringSoonTotal={data.quoteAttention.expiringSoonTotal}
+				conflicts={data.conflicts}
+				scheduleFailed={data.scheduleFailed}
+				conflictsFailed={data.conflictsFailed}
+				quotesFailed={data.quoteAttentionFailed}
+				pendingSettlementFailed={data.pendingSettlementFailed}
+			/>
+
+			{/* KPI strip */}
+			<KpiCards
+				todayCount={data.todayRows.length}
+				todayFailed={data.scheduleFailed}
+				upcomingCount={data.upcomingRows.length}
+				upcomingHref={upcomingHref}
+				upcomingFailed={data.scheduleFailed}
+				pendingQuotesCount={data.quoteAttention.pendingResponseTotal}
+				quotesFailed={data.quoteAttentionFailed}
+				activeDriversCount={data.fleetDrivers.byStatus.active ?? 0}
+				driversFailed={data.fleetDriversFailed}
+				revenueMtd={data.financial.revenueMtd}
+				revenueAvailable={data.financial.revenueAvailable}
+				financialFailed={data.financialFailed}
+			/>
+
+			{/* Priority 2 — today's operations */}
+			<div className="card" style={{ marginTop: "1.5rem" }}>
+				<div className="card-header">
+					<h2 className="card-title">Today&apos;s Operations</h2>
+					<Link href="/admin/bookings?today=true" style={{ fontSize: "0.75rem", color: "var(--brand-600)", fontWeight: 500 }}>
+						View All Today&apos;s Bookings →
+					</Link>
 				</div>
-			)}
-
-			{/* Stat Cards Grid */}
-			<div className="dashboard-grid">
-				<div className="stat-card">
-					<div className="stat-card-header">
-						<span className="stat-card-label">Today&apos;s Transfers</span>
-						<div className="stat-card-icon" style={{ background: "var(--brand-50)", color: "var(--brand-700)" }}>
-							🚖
-						</div>
-					</div>
-					<div className="stat-card-value">{data.todayBookings}</div>
-					<div className="stat-card-footer">Scheduled for today</div>
-				</div>
-
-				<Link href="/admin/quotes" className="stat-card" style={{ textDecoration: "none", color: "inherit" }}>
-					<div className="stat-card-header">
-						<span className="stat-card-label">Pending Quotes</span>
-						<div className="stat-card-icon" style={{ background: "var(--status-warning-bg)", color: "var(--status-warning)" }}>
-							📋
-						</div>
-					</div>
-					<div className="stat-card-value">{data.pendingQuotes}</div>
-					<div className="stat-card-footer">Draft or in-review quotes →</div>
-				</Link>
-
-				<div className="stat-card">
-					<div className="stat-card-header">
-						<span className="stat-card-label">Active Chauffeurs</span>
-						<div className="stat-card-icon" style={{ background: "var(--status-success-bg)", color: "var(--status-success)" }}>
-							👤
-						</div>
-					</div>
-					<div className="stat-card-value">{data.activeDrivers}</div>
-					<div className="stat-card-footer">Available for dispatch</div>
-				</div>
-
-				<div className="stat-card">
-					<div className="stat-card-header">
-						<span className="stat-card-label">Revenue (MTD)</span>
-						<div className="stat-card-icon" style={{ background: "var(--status-info-bg)", color: "var(--status-info)" }}>
-							💶
-						</div>
-					</div>
-					<div className="stat-card-value">{formatCurrency(data.revenueMtd)}</div>
-					<div className="stat-card-footer">Month-to-date settled</div>
+				<div className="card-body card-body-flush">
+					<ScheduleTable
+						rows={data.todayRows}
+						mode="today"
+						failed={data.scheduleFailed}
+						emptyTitle="No transfers scheduled for today."
+						emptyText="When bookings are scheduled for today, they'll appear here with pickup times, driver and vehicle assignment, and status."
+					/>
 				</div>
 			</div>
 
-			{/* Quick Operational Shortcuts */}
-			<div className="card" style={{ marginBottom: "1.5rem" }}>
+			{/* Priority 3 — upcoming operations */}
+			<div className="card" style={{ marginTop: "1.5rem" }}>
 				<div className="card-header">
-					<h2 className="card-title">Quick Operational Actions</h2>
+					<h2 className="card-title">Upcoming Transfers</h2>
+					<Link href={upcomingHref} style={{ fontSize: "0.75rem", color: "var(--brand-600)", fontWeight: 500 }}>
+						View All Upcoming Bookings →
+					</Link>
+				</div>
+				<div className="card-body card-body-flush">
+					<ScheduleTable
+						rows={data.upcomingRows}
+						mode="upcoming"
+						failed={data.scheduleFailed}
+						emptyTitle="No upcoming transfers in the next 7 days."
+						emptyText="Bookings scheduled for the next week will appear here."
+					/>
+				</div>
+			</div>
+
+			{/* Priority 4 — booking/quote pipeline */}
+			<div className="card" style={{ marginTop: "1.5rem" }}>
+				<div className="card-header">
+					<h2 className="card-title">Booking Pipeline</h2>
+				</div>
+				<div className="card-body">
+					<PipelineStrip counts={data.pipeline} failed={data.pipelineFailed} />
+				</div>
+			</div>
+
+			<div style={{ marginTop: "1.5rem" }}>
+				<QuoteAttentionCard
+					pendingResponse={data.quoteAttention.pendingResponse}
+					pendingResponseTotal={data.quoteAttention.pendingResponseTotal}
+					expiringSoon={data.quoteAttention.expiringSoon}
+					expiringSoonTotal={data.quoteAttention.expiringSoonTotal}
+					failed={data.quoteAttentionFailed}
+				/>
+			</div>
+
+			{/* Priority 5 — fleet and financial overview */}
+			<div className="dashboard-sections" style={{ marginTop: "1.5rem" }}>
+				<FleetStatusCard
+					driverByStatus={data.fleetDrivers.byStatus}
+					licenseExpiring={data.fleetDrivers.licenseExpiring}
+					vehicleByStatus={data.fleetVehicles.byStatus}
+					vehicleTotal={data.fleetVehicles.total}
+					driversFailed={data.fleetDriversFailed}
+					vehiclesFailed={data.fleetVehiclesFailed}
+				/>
+				<FinancialOverviewCard
+					financial={data.financial}
+					pendingSettlementCount={data.pendingSettlement.length}
+					pendingSettlementAmount={pendingSettlementAmount}
+					failed={data.financialFailed}
+				/>
+			</div>
+
+			{/* Quick Actions — every link verified to point at a real route */}
+			<div className="card" style={{ marginTop: "1.5rem" }}>
+				<div className="card-header">
+					<h2 className="card-title">Quick Actions</h2>
 				</div>
 				<div className="card-body">
 					<div className="quick-actions" style={{ marginBottom: 0 }}>
-						<Link href="/admin/bookings/new" className="btn btn-secondary">
-							+ Create Booking
-						</Link>
-						<Link href="/admin/quotes/new" className="btn btn-secondary">
-							+ Draft Quotation
-						</Link>
-						<Link href="/admin/customers/new" className="btn btn-secondary">
-							+ Add Customer
-						</Link>
-						<Link href="/admin/drivers/new" className="btn btn-secondary">
-							+ Onboard Driver
-						</Link>
-						<Link href="/admin/vehicles/new" className="btn btn-secondary">
-							+ Add Vehicle
-						</Link>
-						<Link href="/admin/calendar" className="btn btn-secondary">
-							📅 View Schedule
-						</Link>
+						<Link href="/admin/bookings/new" className="btn btn-secondary">+ New Booking</Link>
+						<Link href="/admin/quotes/new" className="btn btn-secondary">+ New Quote</Link>
+						<Link href="/admin/bookings?today=true" className="btn btn-secondary">Today&apos;s Transfers</Link>
+						<Link href={upcomingHref} className="btn btn-secondary">Upcoming Transfers</Link>
+						<Link href="/admin/drivers" className="btn btn-secondary">Manage Drivers</Link>
+						<Link href="/admin/customers/new" className="btn btn-secondary">+ Add Customer</Link>
 					</div>
 				</div>
 			</div>
 
-			{/* Two Column Layout: Today's Schedule & Recent Activity */}
-			<div className="dashboard-sections">
-				{/* Today's Schedule */}
-				<div className="card">
-					<div className="card-header">
-						<h2 className="card-title">Today&apos;s Dispatch Schedule</h2>
-						<Link href="/admin/bookings?today=true" style={{ fontSize: "0.75rem", color: "var(--brand-600)", fontWeight: 500 }}>
-							View All Bookings →
-						</Link>
-					</div>
-					<div className="card-body card-body-flush">
-						{data.todaySchedule.length === 0 ? (
-							<div className="empty-state" style={{ padding: "2rem 1rem" }}>
-								<div className="empty-state-icon">🗓️</div>
-								<div className="empty-state-title">No Bookings Scheduled for Today</div>
-								<div className="empty-state-text">
-									When new bookings are scheduled for today, they will appear here with pickup times, vehicle assignments, and route details.
-								</div>
-								<Link href="/admin/bookings/new" className="btn btn-sm btn-primary" style={{ marginTop: "1rem" }}>
-									Create First Booking
-								</Link>
-							</div>
-						) : (
-							<div className="table-wrap">
-								<table className="table">
-									<thead>
-										<tr>
-											<th>Time</th>
-											<th>Route</th>
-											<th>Passenger</th>
-											<th>Chauffeur</th>
-											<th>Status</th>
-										</tr>
-									</thead>
-									<tbody>
-										{data.todaySchedule.map((b) => (
-												<tr key={b.id}>
-													<td style={{ fontWeight: 600 }}>{b.pickup_time}</td>
-													<td>
-														<Link href={`/admin/bookings/${b.id}`} style={{ fontWeight: 500, color: "var(--brand-700)" }}>
-															{b.pickup_location} → {b.dropoff_location}
-														</Link>
-													</td>
-													<td>{b.customer_name}</td>
-													<td>
-														{b.driver_name || (
-															<span className="badge badge-warning" style={{ fontSize: "0.625rem" }}>
-																Unassigned
-															</span>
-														)}
-													</td>
-													<td>
-														<span className={`badge ${BOOKING_STATUS_BADGES[b.status] || "badge-neutral"}`} style={{ fontSize: "0.625rem" }}>
-															{BOOKING_STATUS_LABELS[b.status] || b.status}
-														</span>
-													</td>
-												</tr>
-											))
-										}
-									</tbody>
-								</table>
-							</div>
-						)}
-					</div>
-				</div>
-
-				{/* Recent Activity */}
-				<div className="card">
-					<div className="card-header">
-						<h2 className="card-title">Recent Activity Feed</h2>
-						<Link href="/admin/activity-log" style={{ fontSize: "0.75rem", color: "var(--brand-600)", fontWeight: 500 }}>
-							View Full Audit Log →
-						</Link>
-					</div>
-					<div className="card-body">
-						{data.recentActivity.length === 0 ? (
-							<div className="empty-state" style={{ padding: "2rem 1rem" }}>
-								<div className="empty-state-icon">⚡</div>
-								<div className="empty-state-title">System Activity Feed</div>
-								<div className="empty-state-text">
-									Real-time audit log of quotes sent, bookings confirmed, driver assignments, and customer updates.
-								</div>
-							</div>
-						) : (
-							<div style={{ display: "flex", flexDirection: "column" }}>
-								{data.recentActivity.map((act) => (
-									<div key={act.id} className="activity-item">
-										<div
-											className="activity-dot"
-											style={{
-												background:
-													act.action === "created"
-														? "var(--brand-500)"
-														: act.action === "status_changed"
-														? "var(--status-warning)"
-														: act.action === "assigned"
-														? "var(--status-info)"
-														: "var(--gray-400)",
-											}}
-										/>
-										<div className="activity-content">
-											<div className="activity-text">
-												<strong>{act.action.toUpperCase()}</strong> on {act.entity_type}
-											</div>
-											<div className="activity-time">{formatDate(act.created_at)}</div>
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-				</div>
+			{/* Priority 6 — recent activity */}
+			<div style={{ marginTop: "1.5rem" }}>
+				<ActivityFeedCard activity={data.activity} failed={data.activityFailed} />
 			</div>
 		</div>
 	);

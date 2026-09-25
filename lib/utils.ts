@@ -141,6 +141,35 @@ export function todayDate(): string {
 }
 
 /**
+ * The timezone the business actually operates in. SQLite's date('now') and
+ * Date.toISOString() are both UTC, which drifts from Greek local time by
+ * 2-3 hours depending on DST — enough to put a late-night or early-morning
+ * pickup on the wrong "today". Dashboard date calculations should compute
+ * the operational date here in JS (Intl handles the DST transition) rather
+ * than relying on SQLite's UTC date functions.
+ */
+export const OPERATIONAL_TIMEZONE = "Europe/Athens";
+
+/**
+ * Get a YYYY-MM-DD date string for "today" (or N days from today) in the
+ * business's operational timezone, suitable for binding directly against
+ * TEXT date columns like bookings.pickup_date.
+ */
+export function operationalDate(offsetDays = 0): string {
+	const base = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: OPERATIONAL_TIMEZONE,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).formatToParts(base);
+	const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+	const m = parts.find((p) => p.type === "month")?.value ?? "01";
+	const d = parts.find((p) => p.type === "day")?.value ?? "01";
+	return `${y}-${m}-${d}`;
+}
+
+/**
  * Simple pagination helper.
  */
 export interface PaginationParams {

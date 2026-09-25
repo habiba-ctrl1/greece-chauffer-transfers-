@@ -4,7 +4,7 @@
 "use server";
 
 import { getDb } from "@/lib/db";
-import { generateId, formatCurrency, formatDate } from "@/lib/utils";
+import { generateId, formatCurrency, formatDate, operationalDate } from "@/lib/utils";
 import { getCurrentUser } from "@/lib/auth/session";
 import { recordActivity } from "@/lib/actions/activity";
 import { getCompanySettings } from "@/lib/actions/settings";
@@ -300,6 +300,69 @@ export async function createInvoiceFromBooking(
 	} catch (e) {
 		console.error("Error creating invoice from booking:", e);
 		return { success: false, error: (e as Error).message || "Failed to generate invoice" };
+	}
+}
+
+export interface FinancialSnapshot {
+	revenueMtd: number;
+	/** False if the payments table has no rows at all — see comment below. */
+	revenueAvailable: boolean;
+	paid: number;
+	outstanding: number;
+	overdue: number;
+}
+
+/**
+ * Dashboard "Financial Overview" data.
+ *
+ * Paid / Outstanding / Overdue are computed from the invoices table, which
+ * already carries exactly those statuses and is populated by
+ * createInvoiceFromBooking(). Revenue MTD is computed from the payments
+ * table, same as the original dashboard stat — but since there is no
+ * Payments UI anywhere yet, that table can easily be completely empty even
+ * while real business is happening. Rather than show a misleading €0.00 in
+ * that case, revenueAvailable is set to false so the UI can say the figure
+ * is unavailable instead of implying zero revenue.
+ */
+export async function getFinancialSnapshot(): Promise<FinancialSnapshot> {
+	try {
+		const db = await getDb();
+		const today = operationalDate(0);
+		const monthStart = `${today.slice(0, 7)}-01`;
+
+		const [paidRes, outstandingRes, overdueRes, paymentsCountRes, revenueRes] = await Promise.all([
+			db.prepare("SELECT COALESCE(SUM(total), 0) as sum FROM invoices WHERE status = 'paid'").first<{ sum: number }>(),
+			db
+				.prepare("SELECT COALESCE(SUM(total), 0) as sum FROM invoices WHERE status = 'sent' AND (due_date IS NULL OR due_date >= ?)")
+				.bind(today)
+				.first<{ sum: number }>(),
+			db
+				.prepare("SELECT COALESCE(SUM(total), 0) as sum FROM invoices WHERE status = 'overdue' OR (status = 'sent' AND due_date < ?)")
+				.bind(today)
+				.first<{ sum: number }>(),
+			db.prepare("SELECT COUNT(*) as count FROM payments").first<{ count: number }>(),
+			db
+				.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed' AND payment_date >= ?")
+				.bind(monthStart)
+				.first<{ total: number }>(),
+		]);
+
+		return {
+			revenueMtd: revenueRes?.total ?? 0,
+			revenueAvailable: (paymentsCountRes?.count ?? 0) > 0,
+			paid: paidRes?.sum ?? 0,
+			outstanding: outstandingRes?.sum ?? 0,
+			overdue: overdueRes?.sum ?? 0,
+		};
+	} catch (e) {
+		console.error("Error in getFinancialSnapshot:", e);
+		return {
+			revenueMtd: 0,
+			revenueAvailable: false,
+			paid: 0,
+			outstanding: 0,
+			overdue: 0,
+		};
 	}
 }
 

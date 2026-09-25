@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getBookings } from "@/lib/actions/bookings";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, operationalDate } from "@/lib/utils";
 import {
 	BOOKING_STATUS_LABELS,
 	BOOKING_STATUS_BADGES,
@@ -19,6 +19,8 @@ interface BookingsPageProps {
 		status?: string;
 		unassigned?: string;
 		today?: string;
+		from?: string;
+		to?: string;
 		search?: string;
 		page?: string;
 	}>;
@@ -29,6 +31,9 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 	const status = params.status || "all";
 	const unassigned = params.unassigned === "true";
 	const todayOnly = params.today === "true";
+	const dateFrom = params.from;
+	const dateTo = params.to;
+	const upcoming = Boolean(dateFrom && dateTo && !unassigned && !todayOnly && status === "all");
 	const search = params.search || "";
 	const page = parseInt(params.page || "1", 10);
 
@@ -36,6 +41,8 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 		status: unassigned ? undefined : status,
 		unassigned,
 		today_only: todayOnly,
+		date_from: dateFrom,
+		date_to: dateTo,
 		search,
 		page,
 		limit: 15,
@@ -45,6 +52,7 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 		{ id: "all", label: "All Bookings", href: "/admin/bookings" },
 		{ id: "unassigned", label: "⚠️ Needs Chauffeur", href: "/admin/bookings?unassigned=true" },
 		{ id: "today", label: "Today's Schedule", href: "/admin/bookings?today=true" },
+		{ id: "upcoming", label: "Upcoming 7 Days", href: `/admin/bookings?from=${operationalDate(1)}&to=${operationalDate(7)}` },
 		{ id: "confirmed", label: "Confirmed", href: "/admin/bookings?status=confirmed" },
 		{ id: "driver_assigned", label: "Driver Assigned", href: "/admin/bookings?status=driver_assigned" },
 		{ id: "in_progress", label: "In Progress", href: "/admin/bookings?status=in_progress" },
@@ -55,6 +63,7 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 	function isTabActive(tabId: string) {
 		if (unassigned) return tabId === "unassigned";
 		if (todayOnly) return tabId === "today";
+		if (upcoming) return tabId === "upcoming";
 		return status === tabId;
 	}
 
@@ -66,6 +75,7 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 					<h1>Chauffeur Booking Dispatch</h1>
 					<p style={{ color: "var(--text-tertiary)", fontSize: "0.8125rem", marginTop: "0.25rem" }}>
 						{total} booking{total === 1 ? "" : "s"} found in current view
+						{upcoming ? ` — pickups from ${dateFrom} to ${dateTo}` : ""}
 					</p>
 				</div>
 				<div className="page-header-actions">
@@ -102,6 +112,8 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 						{status !== "all" && <input type="hidden" name="status" value={status} />}
 						{unassigned && <input type="hidden" name="unassigned" value="true" />}
 						{todayOnly && <input type="hidden" name="today" value="true" />}
+						{upcoming && dateFrom && <input type="hidden" name="from" value={dateFrom} />}
+						{upcoming && dateTo && <input type="hidden" name="to" value={dateTo} />}
 						<input
 							type="text"
 							name="search"
@@ -262,7 +274,7 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 						<div style={{ display: "flex", gap: "0.5rem" }}>
 							{page > 1 && (
 								<Link
-									href={`/admin/bookings?page=${page - 1}${status !== "all" ? `&status=${status}` : ""}${unassigned ? "&unassigned=true" : ""}${todayOnly ? "&today=true" : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`}
+									href={`/admin/bookings?page=${page - 1}${status !== "all" ? `&status=${status}` : ""}${unassigned ? "&unassigned=true" : ""}${todayOnly ? "&today=true" : ""}${upcoming && dateFrom ? `&from=${dateFrom}` : ""}${upcoming && dateTo ? `&to=${dateTo}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`}
 									className="btn btn-sm btn-secondary"
 								>
 									Previous
@@ -270,7 +282,7 @@ export default async function BookingsPage({ searchParams }: BookingsPageProps) 
 							)}
 							{page < totalPages && (
 								<Link
-									href={`/admin/bookings?page=${page + 1}${status !== "all" ? `&status=${status}` : ""}${unassigned ? "&unassigned=true" : ""}${todayOnly ? "&today=true" : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`}
+									href={`/admin/bookings?page=${page + 1}${status !== "all" ? `&status=${status}` : ""}${unassigned ? "&unassigned=true" : ""}${todayOnly ? "&today=true" : ""}${upcoming && dateFrom ? `&from=${dateFrom}` : ""}${upcoming && dateTo ? `&to=${dateTo}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`}
 									className="btn btn-sm btn-secondary"
 								>
 									Next

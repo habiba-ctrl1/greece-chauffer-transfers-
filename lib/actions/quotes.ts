@@ -4,7 +4,7 @@
 "use server";
 
 import { getDb } from "@/lib/db";
-import { generateId } from "@/lib/utils";
+import { generateId, operationalDate } from "@/lib/utils";
 import { getCurrentUser } from "@/lib/auth/session";
 import { recordActivity } from "@/lib/actions/activity";
 import type {
@@ -809,6 +809,82 @@ export async function createQuoteFromBooking(
 	} catch (e) {
 		console.error("Error creating quote from booking:", e);
 		return { success: false, error: (e as Error).message || "Failed to create quote from booking" };
+	}
+}
+
+export interface QuoteAttentionResult {
+	/** Sent/viewed quotes still waiting on the client, oldest first (capped sample). */
+	pendingResponse: QuoteWithDetails[];
+	pendingResponseTotal: number;
+	/** Sent/viewed quotes whose valid_until falls within the next 48 hours (capped sample). */
+	expiringSoon: QuoteWithDetails[];
+	expiringSoonTotal: number;
+}
+
+/**
+ * Dashboard "Quote Attention" data: quotes awaiting a client response and
+ * quotes about to lapse. Both reuse the same customer join as getQuotes().
+ */
+export async function getQuoteAttention(limit = 5): Promise<QuoteAttentionResult> {
+	try {
+		const db = await getDb();
+		const today = operationalDate(0);
+		const soon = operationalDate(2);
+
+		const baseSelect = `
+			SELECT
+				q.*,
+				c.name as customer_name,
+				c.email as customer_email,
+				c.phone as customer_phone,
+				c.company_name as customer_company
+			FROM quotes q
+			LEFT JOIN customers c ON c.id = q.customer_id
+		`;
+
+		const [pendingRes, pendingCountRes, expiringRes, expiringCountRes] = await Promise.all([
+			db
+				.prepare(
+					`${baseSelect}
+					WHERE q.status IN ('sent', 'viewed')
+					ORDER BY q.created_at ASC
+					LIMIT ?`
+				)
+				.bind(limit)
+				.all<QuoteWithDetails>(),
+			db
+				.prepare("SELECT COUNT(*) as count FROM quotes WHERE status IN ('sent', 'viewed')")
+				.first<{ count: number }>(),
+			db
+				.prepare(
+					`${baseSelect}
+					WHERE q.status IN ('sent', 'viewed')
+						AND q.valid_until IS NOT NULL
+						AND q.valid_until >= ?
+						AND q.valid_until <= ?
+					ORDER BY q.valid_until ASC
+					LIMIT ?`
+				)
+				.bind(today, soon, limit)
+				.all<QuoteWithDetails>(),
+			db
+				.prepare(
+					`SELECT COUNT(*) as count FROM quotes
+					 WHERE status IN ('sent', 'viewed') AND valid_until IS NOT NULL AND valid_until >= ? AND valid_until <= ?`
+				)
+				.bind(today, soon)
+				.first<{ count: number }>(),
+		]);
+
+		return {
+			pendingResponse: pendingRes.results || [],
+			pendingResponseTotal: pendingCountRes?.count ?? 0,
+			expiringSoon: expiringRes.results || [],
+			expiringSoonTotal: expiringCountRes?.count ?? 0,
+		};
+	} catch (e) {
+		console.error("Error in getQuoteAttention:", e);
+		return { pendingResponse: [], pendingResponseTotal: 0, expiringSoon: [], expiringSoonTotal: 0 };
 	}
 }
 
