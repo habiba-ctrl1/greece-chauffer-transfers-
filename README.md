@@ -15,7 +15,7 @@ Executive black-car and chauffeur transport management system for Greece. Built 
 ```
 ├── app/
 │   ├── (public)
-│   │   ├── page.tsx               # Landing & quick links
+│   │   ├── (site)/                # Public marketing site (see docs/SITE_ARCHITECTURE.md)
 │   │   └── api/health/route.ts    # System & database health endpoint
 │   ├── (auth)
 │   │   └── login/                 # Executive sign-in portal

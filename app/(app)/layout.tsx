@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Greece Chauffeur — Connection Test",
-  description: "Technical deployment and connection test for the Greece Chauffeur project.",
+  title: "Greece Chauffeur Service — Operations",
+  description: "Operations and dispatch portal.",
+  robots: { index: false, follow: false },
 };
 
-export default function RootLayout({
+export default function AppRootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
