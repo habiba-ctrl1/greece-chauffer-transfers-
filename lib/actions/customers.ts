@@ -7,6 +7,8 @@ import { getDb } from "@/lib/db";
 import { generateId } from "@/lib/utils";
 import { recordActivity } from "@/lib/actions/activity";
 import type { Customer, CustomerType } from "@/lib/schema";
+import { requireAdmin } from "@/lib/auth/guard";
+
 
 export interface CustomerWithStats extends Customer {
 	total_bookings: number;
@@ -34,6 +36,7 @@ export interface GetCustomersResult {
 export async function getCustomers(
 	options: GetCustomersOptions = {}
 ): Promise<GetCustomersResult> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const page = Math.max(1, options.page || 1);
@@ -95,6 +98,7 @@ export async function getCustomers(
  * Get single customer by ID with aggregate booking statistics.
  */
 export async function getCustomerById(id: string): Promise<CustomerWithStats | null> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const query = `
@@ -120,6 +124,7 @@ export async function getCustomerById(id: string): Promise<CustomerWithStats | n
  * Quick search for customers by query string (used for autocompletion in booking/quote forms).
  */
 export async function searchCustomers(query: string): Promise<Customer[]> {
+	await requireAdmin();
 	if (!query || query.trim().length === 0) return [];
 
 	try {
@@ -159,6 +164,7 @@ export interface CustomerActionResult {
  * Create a new customer.
  */
 export async function createCustomer(data: CustomerFormData): Promise<CustomerActionResult> {
+	await requireAdmin();
 	const name = data.name?.trim();
 	if (!name) {
 		return { success: false, error: "Customer name is required." };
@@ -210,6 +216,7 @@ export async function updateCustomer(
 	id: string,
 	data: CustomerFormData
 ): Promise<CustomerActionResult> {
+	await requireAdmin();
 	const name = data.name?.trim();
 	if (!name) {
 		return { success: false, error: "Customer name is required." };

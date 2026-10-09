@@ -4,7 +4,7 @@
 
 import { getDb } from "@/lib/db";
 import { generateId } from "@/lib/utils";
-import type { SafeUser, User } from "@/lib/schema";
+import type { SafeUser } from "@/lib/schema";
 import { cookies } from "next/headers";
 
 const SESSION_COOKIE = "gcs_session";

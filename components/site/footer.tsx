@@ -32,6 +32,7 @@ export function Footer() {
             <ul>
               <li><Link href="/contact">Contact</Link></li>
               <li><Link href="/faq">FAQ</Link></li>
+              <li><Link href="/privacy">Privacy notice</Link></li>
               <li><Link href="/#partners">Partner With Us</Link></li>
             </ul>
           </nav>

@@ -15,6 +15,8 @@ import type {
 	TripType,
 } from "@/lib/schema";
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/auth/guard";
+
 
 export interface GetQuotesFilter {
 	status?: string;
@@ -124,6 +126,7 @@ async function generateBookingNumber(db: D1Database): Promise<string> {
 export async function getQuotes(
 	filter: GetQuotesFilter = {}
 ): Promise<GetQuotesResult> {
+	await requireAdmin();
 	const db = await getDb();
 	const page = Math.max(1, filter.page || 1);
 	const limit = Math.min(100, Math.max(1, filter.limit || 20));
@@ -207,6 +210,7 @@ export async function getQuotes(
  * Get a single quote by ID with full customer, items, and linked booking.
  */
 export async function getQuoteById(id: string): Promise<QuoteWithDetails | null> {
+	await requireAdmin();
 	const db = await getDb();
 
 	const quote = await db
@@ -247,6 +251,7 @@ export async function getQuoteById(id: string): Promise<QuoteWithDetails | null>
 export async function createQuote(
 	data: CreateQuoteInput
 ): Promise<{ success: boolean; quote?: Quote; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const currentUser = await getCurrentUser();
@@ -364,11 +369,16 @@ export async function updateQuote(
 	id: string,
 	data: Partial<CreateQuoteInput>
 ): Promise<{ success: boolean; quote?: Quote; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const current = await getQuoteById(id);
 		if (!current) {
 			return { success: false, error: "Quote not found" };
+		}
+		// A quotation that has been sent is a record of what the customer received: never edit it in place.
+		if (current.status !== "draft") {
+			return { success: false, error: "This quotation has already been sent. Create a new version instead of editing it." };
 		}
 
 		// Update fields
@@ -483,6 +493,7 @@ export async function updateQuoteStatus(
 	newStatus: QuoteStatus,
 	notes?: string
 ): Promise<{ success: boolean; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const quote = await getQuoteById(id);
@@ -520,12 +531,17 @@ export async function updateQuoteStatus(
 export async function convertQuoteToBooking(
 	quoteId: string
 ): Promise<{ success: boolean; bookingId?: string; bookingNumber?: string; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const quote = await getQuoteById(quoteId);
 
 		if (!quote) {
 			return { success: false, error: "Quote not found" };
+		}
+
+		if (quote.status !== "accepted") {
+			return { success: false, error: "Only an accepted quotation can be converted into a booking." };
 		}
 
 		// Check if quote has already been converted
@@ -656,6 +672,7 @@ export async function convertQuoteToBooking(
 export async function createQuoteFromBooking(
 	bookingId: string
 ): Promise<{ success: boolean; quoteId?: string; quoteNumber?: string; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const currentUser = await getCurrentUser();
@@ -826,6 +843,7 @@ export interface QuoteAttentionResult {
  * quotes about to lapse. Both reuse the same customer join as getQuotes().
  */
 export async function getQuoteAttention(limit = 5): Promise<QuoteAttentionResult> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const today = operationalDate(0);

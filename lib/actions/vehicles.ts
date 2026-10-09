@@ -10,6 +10,8 @@
 import { getDb } from "@/lib/db";
 import { VEHICLE_STATUSES } from "@/lib/constants";
 import type { VehicleStatus } from "@/lib/schema";
+import { requireAdmin } from "@/lib/auth/guard";
+
 
 export interface VehicleFleetSummary {
 	byStatus: Record<VehicleStatus, number>;
@@ -17,6 +19,7 @@ export interface VehicleFleetSummary {
 }
 
 export async function getVehicleFleetSummary(): Promise<VehicleFleetSummary> {
+	await requireAdmin();
 	const zeroed = Object.fromEntries(
 		VEHICLE_STATUSES.map((s) => [s, 0])
 	) as Record<VehicleStatus, number>;

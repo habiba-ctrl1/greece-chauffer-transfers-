@@ -12,6 +12,8 @@ import { getFleetDriverSummary } from "@/lib/actions/drivers";
 import { getVehicleFleetSummary } from "@/lib/actions/vehicles";
 import { getFinancialSnapshot } from "@/lib/actions/invoices";
 import { getRecentActivityFeed } from "@/lib/actions/activity";
+import { CrmDashboardBlock } from "@/components/admin/crm/dashboard-block";
+import { requirePageUser } from "@/lib/auth/guard";
 import { RefreshButton } from "@/components/admin/dashboard/refresh-button";
 import { AttentionPanel } from "@/components/admin/dashboard/attention-panel";
 import { KpiCards } from "@/components/admin/dashboard/kpi-cards";
@@ -160,7 +162,10 @@ async function getDashboardData() {
 	};
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
+	await requirePageUser();
+	const rangeParam = Number((await searchParams).range);
+	const rangeDays = [7, 30, 90].includes(rangeParam) ? rangeParam : 30;
 	const data = await getDashboardData();
 	const upcomingHref = `/admin/bookings?from=${operationalDate(1)}&to=${operationalDate(7)}`;
 	const pendingSettlementAmount = data.pendingSettlement.reduce((sum, b) => sum + b.total, 0);
@@ -188,6 +193,8 @@ export default async function DashboardPage() {
 					</Link>
 				</div>
 			</div>
+
+			<CrmDashboardBlock rangeDays={rangeDays} />
 
 			{/* Priority 1 — urgent operational issues */}
 			<AttentionPanel

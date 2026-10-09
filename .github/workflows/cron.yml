@@ -1,0 +1,26 @@
+name: Booking system scheduler
+
+# Calls the authenticated maintenance endpoint: retries failed emails, expires old
+# quotations and sends the owner's follow-up digest. Safe to run repeatedly (idempotent).
+# Requires repository secrets: APP_URL (e.g. https://greecechaufferservice.com) and CRON_SECRET
+# (the same value as the Worker secret CRON_SECRET).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run maintenance tick
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL / CRON_SECRET secrets are not set; skipping."; exit 0
+          fi
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" -X POST "$APP_URL/api/cron/tick" -H "Authorization: Bearer $CRON_SECRET" --max-time 60)
+          cat /tmp/out.json; echo
+          test "$code" = "200"

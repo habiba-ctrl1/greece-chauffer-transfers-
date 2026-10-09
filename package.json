@@ -9,10 +9,13 @@
     "lint": "eslint",
     "pages:build": "opennextjs-cloudflare build",
     "pages:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "pages:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "pages:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "next": "^16.3.5",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -24,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "typescript": "^5",
+    "vitest": "^3.2.7",
     "wrangler": "^4.135.0"
   }
 }

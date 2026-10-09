@@ -12,10 +12,11 @@ import { getBookingById } from "@/lib/actions/bookings";
 import {
 	dispatchEmail,
 	wrapInLuxuryEmailTemplate,
-	interpolateTemplate,
 } from "@/lib/email/dispatcher";
-import type { Invoice, InvoiceItem, InvoiceStatus, InvoiceWithDetails } from "@/lib/schema";
+import type { InvoiceItem, InvoiceStatus, InvoiceWithDetails } from "@/lib/schema";
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/auth/guard";
+
 
 export interface GetInvoicesFilter {
 	status?: string;
@@ -62,6 +63,7 @@ async function generateInvoiceNumber(db: D1Database): Promise<string> {
 export async function getInvoices(
 	filter: GetInvoicesFilter = {}
 ): Promise<GetInvoicesResult> {
+	await requireAdmin();
 	const db = await getDb();
 	const page = Math.max(1, filter.page || 1);
 	const limit = Math.min(100, Math.max(1, filter.limit || 20));
@@ -141,6 +143,7 @@ export async function getInvoices(
  * Get single invoice by ID with full customer details and line items.
  */
 export async function getInvoiceById(id: string): Promise<InvoiceWithDetails | null> {
+	await requireAdmin();
 	const db = await getDb();
 
 	const invoice = await db
@@ -181,6 +184,7 @@ export async function getInvoiceById(id: string): Promise<InvoiceWithDetails | n
  * Get existing invoice linked to a booking (if already generated).
  */
 export async function getInvoiceByBookingId(bookingId: string): Promise<InvoiceWithDetails | null> {
+	await requireAdmin();
 	const db = await getDb();
 
 	const invoice = await db
@@ -198,6 +202,7 @@ export async function getInvoiceByBookingId(bookingId: string): Promise<InvoiceW
 export async function createInvoiceFromBooking(
 	bookingId: string
 ): Promise<{ success: boolean; invoiceId?: string; invoiceNumber?: string; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const result = await getBookingById(bookingId);
@@ -325,6 +330,7 @@ export interface FinancialSnapshot {
  * is unavailable instead of implying zero revenue.
  */
 export async function getFinancialSnapshot(): Promise<FinancialSnapshot> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const today = operationalDate(0);
@@ -373,6 +379,7 @@ export async function updateInvoiceStatus(
 	id: string,
 	status: InvoiceStatus
 ): Promise<{ success: boolean; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const current = await getInvoiceById(id);
@@ -419,6 +426,7 @@ export async function updateInvoiceStatus(
 export async function sendInvoiceEmail(
 	invoiceId: string
 ): Promise<{ success: boolean; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const invoice = await getInvoiceById(invoiceId);

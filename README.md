@@ -10,6 +10,10 @@ Executive black-car and chauffeur transport management system for Greece. Built 
 - **Admin Shell:** Executive dark theme with responsive sidebar navigation, operational dashboard, and quick action workflows
 - **Styling:** Custom CSS design system (zero runtime, no Tailwind dependency)
 
+## Booking inquiries, quotations & email
+
+The inquiry → quotation (PDF) → confirmed booking workflow, email outbox, follow-ups, security notes and the **production activation checklist** are documented in [docs/BOOKING_SYSTEM.md](docs/BOOKING_SYSTEM.md).
+
 ## Project Structure
 
 ```
@@ -52,10 +56,10 @@ Apply the database schema to your Cloudflare D1 database:
 
 ```bash
 # Local development D1
-npx wrangler d1 execute greece-chauffer-transfers-db --local --file=schema.sql
+npx wrangler d1 migrations apply greece-chauffer-transfers-db --local
 
 # Production Cloudflare D1
-npx wrangler d1 execute greece-chauffer-transfers-db --remote --file=schema.sql
+npx wrangler d1 migrations apply greece-chauffer-transfers-db --remote
 ```
 
 ### 3. Seed Super Admin User

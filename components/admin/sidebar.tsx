@@ -42,6 +42,20 @@ export function Sidebar({ user, isOpen, onClose }: SidebarProps) {
 					),
 				},
 				{
+					label: "Inquiries",
+					href: "/admin/inquiries",
+					icon: (
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+					),
+				},
+				{
+					label: "Follow-ups",
+					href: "/admin/followups",
+					icon: (
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+					),
+				},
+				{
 					label: "Bookings",
 					href: "/admin/bookings",
 					icon: (
@@ -52,19 +66,7 @@ export function Sidebar({ user, isOpen, onClose }: SidebarProps) {
 							<circle cx="17" cy="17" r="2"></circle>
 						</svg>
 					),
-				},
-				{
-					label: "Calendar",
-					href: "/admin/calendar",
-					icon: (
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-							<line x1="16" y1="2" x2="16" y2="6"></line>
-							<line x1="8" y1="2" x2="8" y2="6"></line>
-							<line x1="3" y1="10" x2="21" y2="10"></line>
-						</svg>
-					),
-				},
+				},
 				{
 					label: "Quotes",
 					href: "/admin/quotes",
@@ -105,32 +107,12 @@ export function Sidebar({ user, isOpen, onClose }: SidebarProps) {
 							<line x1="12" y1="11" x2="12" y2="17"></line>
 						</svg>
 					),
-				},
-				{
-					label: "Vehicles",
-					href: "/admin/vehicles",
-					icon: (
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-							<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-						</svg>
-					),
-				},
+				},
 			],
 		},
 		{
 			title: "Financials",
-			items: [
-				{
-					label: "Payments",
-					href: "/admin/payments",
-					icon: (
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-							<line x1="1" y1="10" x2="23" y2="10"></line>
-						</svg>
-					),
-				},
+			items: [
 				{
 					label: "Invoices",
 					href: "/admin/invoices",
@@ -141,25 +123,21 @@ export function Sidebar({ user, isOpen, onClose }: SidebarProps) {
 							<line x1="8" y1="12" x2="16" y2="12"></line>
 						</svg>
 					),
-				},
-				{
-					label: "Routes & Pricing",
-					href: "/admin/routes",
-					icon: (
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<circle cx="6" cy="19" r="3"></circle>
-							<path d="M9 19h8.5a4.5 4.5 0 0 0 0-9H5a4 4 0 0 1 0-8h11.5"></path>
-							<circle cx="18" cy="5" r="3"></circle>
-						</svg>
-					),
-				},
+				},
 			],
 		},
 		{
 			title: "System",
 			items: [
 				{
-					label: "Emails",
+					label: "Reports",
+					href: "/admin/reports",
+					icon: (
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+					),
+				},
+				{
+					label: "Email Activity",
 					href: "/admin/emails",
 					icon: (
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -167,17 +145,7 @@ export function Sidebar({ user, isOpen, onClose }: SidebarProps) {
 							<polyline points="22,6 12,13 2,6"></polyline>
 						</svg>
 					),
-				},
-				{
-					label: "Activity Log",
-					href: "/admin/activity-log",
-					icon: (
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-							<circle cx="12" cy="12" r="10"></circle>
-							<polyline points="12 6 12 12 14 14"></polyline>
-						</svg>
-					),
-				},
+				},
 				{
 					label: "Settings",
 					href: "/admin/settings",

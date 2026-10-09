@@ -7,6 +7,8 @@ import { getDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { recordActivity } from "@/lib/actions/activity";
 import { revalidatePath } from "next/cache";
+import { requireAdmin, requireOwner } from "@/lib/auth/guard";
+
 
 export interface CompanySettingsData {
 	company_name: string;
@@ -28,19 +30,19 @@ export interface CompanySettingsData {
 
 const DEFAULT_SETTINGS: CompanySettingsData = {
 	company_name: "Greece Chauffeur Service",
-	company_email: "info@greecechauffeur.com",
-	company_phone: "+30 210 000 0000",
-	company_address: "Leoforos Vasilissis Sofias 10, Athens 106 74, Greece",
-	company_website: "https://greecechauffeur.com",
-	company_vat: "EL999999999",
-	company_license: "GNTO-MHTE: 0206E0000000",
+	company_email: "greecechauffertransfers@gmail.com",
+	company_phone: "",
+	company_address: "",
+	company_website: "https://greecechaufferservice.com",
+	company_vat: "",
+	company_license: "",
 	default_currency: "EUR",
 	tax_rate: 24,
 	quote_validity_days: 7,
-	booking_terms: "All chauffeured services include meet & greet, flight tracking, and bottled water. Cancellations made more than 24 hours prior to scheduled pickup are eligible for full refund.",
-	invoice_terms: "Payment terms: Due upon receipt. All bank transfer fees are the responsibility of the client.",
+	booking_terms: "",
+	invoice_terms: "",
 	resend_api_key: "",
-	sender_email: "transfers@greecechauffeur.com",
+	sender_email: "",
 	sender_name: "Greece Chauffeur Service",
 };
 
@@ -60,6 +62,7 @@ function parseSettingValue(raw: string | undefined, fallback: unknown): unknown 
  * Fetch all company settings with defaults fallback.
  */
 export async function getCompanySettings(): Promise<CompanySettingsData> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const rows = await db
@@ -84,7 +87,7 @@ export async function getCompanySettings(): Promise<CompanySettingsData> {
 			quote_validity_days: Number(parseSettingValue(settingsMap.quote_validity_days, DEFAULT_SETTINGS.quote_validity_days)) || 7,
 			booking_terms: String(parseSettingValue(settingsMap.booking_terms, DEFAULT_SETTINGS.booking_terms)),
 			invoice_terms: String(parseSettingValue(settingsMap.invoice_terms, DEFAULT_SETTINGS.invoice_terms)),
-			resend_api_key: String(parseSettingValue(settingsMap.resend_api_key, DEFAULT_SETTINGS.resend_api_key)),
+			resend_api_key: "", // secrets live in the Worker environment, never in the DB or the browser
 			sender_email: String(parseSettingValue(settingsMap.sender_email, DEFAULT_SETTINGS.sender_email)),
 			sender_name: String(parseSettingValue(settingsMap.sender_name, DEFAULT_SETTINGS.sender_name)),
 		};
@@ -100,12 +103,14 @@ export async function getCompanySettings(): Promise<CompanySettingsData> {
 export async function updateCompanySettings(
 	data: Partial<CompanySettingsData>
 ): Promise<{ success: boolean; error?: string }> {
+	await requireOwner();
 	try {
 		const db = await getDb();
 		const currentUser = await getCurrentUser();
 		const now = new Date().toISOString();
 
-		const entries = Object.entries(data);
+		// Provider credentials and sender identity are environment secrets now.
+		const entries = Object.entries(data).filter(([k]) => !["resend_api_key", "sender_email", "sender_name"].includes(k));
 
 		for (const [key, val] of entries) {
 			const jsonValue = JSON.stringify(val);
