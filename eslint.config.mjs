@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // OpenNext build output (generated bundle).
+    ".open-next/**",
+    ".wrangler/**",
+    "worker-configuration.d.ts",
   ]),
 ]);
 
