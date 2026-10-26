@@ -33,5 +33,9 @@ jobs:
       - name: Build and deploy
         run: npm run pages:deploy
         env:
+          # Public contact details are inlined at build time. Set them as GitHub repository
+          # variables (Settings > Variables); unset values stay hidden on the site.
+          NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
+          NEXT_PUBLIC_PHONE: ${{ vars.NEXT_PUBLIC_PHONE }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

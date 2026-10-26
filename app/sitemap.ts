@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site/config";
 import { DESTINATIONS, SERVICES } from "@/lib/site/content";
 
+// No lastModified: a build-time date on every URL says nothing. Add real per-page dates when content is dated.
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
-  const page = (path: string, priority: number) => ({ url: `${SITE_URL}${path}`, lastModified: now, priority });
+  const page = (path: string, priority: number) => ({ url: `${SITE_URL}${path}`, priority });
   return [
     page("/", 1),
     page("/services", 0.8),
