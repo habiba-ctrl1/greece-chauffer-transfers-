@@ -27,7 +27,9 @@ export function SettingsForm({ initialSettings }: SettingsFormProps) {
 		setMessage(null);
 
 		try {
-			const res = await updateCompanySettings(formData);
+			const { resend_api_key: _k, sender_email: _e, sender_name: _n, ...safe } = formData;
+			void _k; void _e; void _n;
+			const res = await updateCompanySettings(safe);
 			if (res.success) {
 				setMessage({ type: "success", text: "Company settings updated successfully." });
 			} else {
@@ -284,72 +286,16 @@ export function SettingsForm({ initialSettings }: SettingsFormProps) {
 				</div>
 			)}
 
-			{/* Tab 4: Email Dispatcher Configuration */}
+			{/* Tab 4: Email delivery (secrets live in the server environment, never here) */}
 			{activeTab === "email" && (
 				<div className="card" style={{ marginBottom: "1.5rem" }}>
 					<div className="card-header">
-						<h3 className="card-title">Email Dispatch Service (Resend API)</h3>
-						<p className="card-subtitle">Cloudflare-native transactional email delivery system.</p>
+						<h3 className="card-title">Email delivery</h3>
+						<p className="card-subtitle">Credentials are stored as server secrets, not in this database or the browser.</p>
 					</div>
-					<div className="card-body">
-						<div
-							style={{
-								padding: "1rem 1.25rem",
-								borderRadius: "var(--radius-sm)",
-								background: "rgba(59, 130, 246, 0.08)",
-								border: "1px solid rgba(59, 130, 246, 0.2)",
-								marginBottom: "1.5rem",
-								fontSize: "0.875rem",
-								color: "var(--text-secondary)",
-								lineHeight: 1.5,
-							}}
-						>
-							<div style={{ fontWeight: 600, color: "var(--brand-600)", marginBottom: "0.25rem" }}>
-								ℹ Development & Mock Mode Active by Default
-							</div>
-							If you do not configure a Resend API key, the system runs in <strong>safe mock mode</strong>: emails are recorded in the system delivery logs and printed to the server console without attempting external HTTP connections.
-						</div>
-
-						<div className="form-grid">
-							<div className="form-group" style={{ gridColumn: "1 / -1" }}>
-								<label className="form-label">Resend API Key</label>
-								<input
-									type="password"
-									name="resend_api_key"
-									value={formData.resend_api_key}
-									onChange={handleChange}
-									className="form-input"
-									placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx"
-								/>
-								<span style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: "0.25rem", display: "block" }}>
-									Get your API key at <a href="https://resend.com" target="_blank" rel="noreferrer" style={{ color: "var(--brand-600)", textDecoration: "underline" }}>resend.com</a>.
-								</span>
-							</div>
-
-							<div className="form-group">
-								<label className="form-label">Sender Email Address (From)</label>
-								<input
-									type="email"
-									name="sender_email"
-									value={formData.sender_email}
-									onChange={handleChange}
-									className="form-input"
-									placeholder="transfers@yourdomain.com"
-								/>
-							</div>
-
-							<div className="form-group">
-								<label className="form-label">Sender Display Name</label>
-								<input
-									type="text"
-									name="sender_name"
-									value={formData.sender_name}
-									onChange={handleChange}
-									className="form-input"
-									placeholder="Greece Chauffeur Service"
-								/>
-							</div>
-						</div>
+					<div className="card-body" style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
+						<p>The email provider key, the verified sender address and the inquiry-notification inbox are configured as environment variables (<code>RESEND_API_KEY</code>, <code>EMAIL_FROM_ADDRESS</code>, <code>EMAIL_FROM_NAME</code>, <code>BOOKING_NOTIFICATION_EMAIL</code>). They can&apos;t be viewed or changed here.</p>
+						<p style={{ marginTop: "0.75rem" }}>See live status, send a test email, and retry failures in <a href="/admin/emails" style={{ color: "var(--brand-600)", textDecoration: "underline" }}>Email Activity</a>.</p>
 					</div>
 				</div>
 			)}

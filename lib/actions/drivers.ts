@@ -8,6 +8,8 @@ import { generateId, operationalDate } from "@/lib/utils";
 import { recordActivity } from "@/lib/actions/activity";
 import { DRIVER_STATUSES } from "@/lib/constants";
 import type { Driver, DriverStatus } from "@/lib/schema";
+import { requireAdmin } from "@/lib/auth/guard";
+
 
 export interface DriverWithStats extends Driver {
 	total_trips: number;
@@ -34,6 +36,7 @@ export interface GetDriversResult {
 export async function getDrivers(
 	options: GetDriversOptions = {}
 ): Promise<GetDriversResult> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const page = Math.max(1, options.page || 1);
@@ -91,6 +94,7 @@ export async function getDrivers(
  * Get a single driver by ID with trip statistics.
  */
 export async function getDriverById(id: string): Promise<DriverWithStats | null> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const query = `
@@ -135,6 +139,7 @@ export interface DriverActionResult {
  * Create a new driver profile.
  */
 export async function createDriver(data: DriverFormData): Promise<DriverActionResult> {
+	await requireAdmin();
 	const name = data.name?.trim();
 	if (!name) {
 		return { success: false, error: "Driver name is required." };
@@ -203,6 +208,7 @@ export async function updateDriver(
 	id: string,
 	data: DriverFormData
 ): Promise<DriverActionResult> {
+	await requireAdmin();
 	const name = data.name?.trim();
 	if (!name) {
 		return { success: false, error: "Driver name is required." };
@@ -260,6 +266,7 @@ export interface FleetDriverSummary {
  * in the product yet and would only ever read back as zero.
  */
 export async function getFleetDriverSummary(): Promise<FleetDriverSummary> {
+	await requireAdmin();
 	const zeroed = Object.fromEntries(
 		DRIVER_STATUSES.map((s) => [s, 0])
 	) as Record<DriverStatus, number>;
@@ -303,6 +310,7 @@ export async function updateDriverStatus(
 	id: string,
 	status: DriverStatus
 ): Promise<{ success: boolean; error?: string }> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		await db

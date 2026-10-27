@@ -4,6 +4,7 @@ import "./site.css";
 import "./service.css";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { AttributionCapture } from "@/components/site/attribution";
 import { BRAND, CONTACT, SITE_URL, whatsappHref } from "@/lib/site/config";
 
 const display = Cormorant_Garamond({ subsets: ["latin"], weight: ["400", "500", "600"], style: ["normal", "italic"], variable: "--f-display", display: "swap" });
@@ -29,6 +30,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         <Header whatsappHref={whatsappHref()} whatsappExternal={!!CONTACT.whatsapp} />
         <main id="main">{children}</main>
         <Footer />
+        <AttributionCapture />
       </body>
     </html>
   );

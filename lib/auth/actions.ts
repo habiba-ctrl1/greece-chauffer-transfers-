@@ -7,6 +7,8 @@ import { getDb } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { clientIp, rateLimit } from "@/lib/security/rate-limit";
 import type { User } from "@/lib/schema";
 
 export interface LoginResult {
@@ -29,6 +31,17 @@ export async function loginAction(
 
 	try {
 		const db = await getDb();
+
+		// Brute-force protection: per-account and per-IP, shared across Worker isolates via D1.
+		const ip = clientIp(await headers());
+		const [byEmail, byIp] = await Promise.all([
+			rateLimit(db, `login:email:${email.toLowerCase().trim().slice(0, 254)}`, 8, 900),
+			rateLimit(db, `login:ip:${ip}`, 30, 900),
+		]);
+		if (!byEmail.allowed || !byIp.allowed) {
+			return { error: "Too many sign-in attempts. Please wait 15 minutes and try again." };
+		}
+
 		const user = await db
 			.prepare("SELECT * FROM users WHERE email = ?")
 			.bind(email.toLowerCase().trim())

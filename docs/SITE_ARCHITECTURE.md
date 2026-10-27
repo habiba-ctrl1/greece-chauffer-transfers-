@@ -64,9 +64,9 @@ pre-sized AVIF/WebP/JPG yourself (or add Cloudflare Images later).
 
 ## 7. Quote pipeline
 
-Hero panel (plain GET form) → `/contact` pre-fills the 5-step form → `submitQuoteRequest` (`lib/actions/leads.ts`)
-creates/reuses a customer and a **draft quote** (status `draft`, internal note "Website enquiry") visible in `/admin/quotes`.
-No prices are generated. Honeypot field included; no rate-limiting yet.
+Hero panel (plain GET form) → `/contact` pre-fills the 5-step form → `submitInquiry` (`lib/actions/leads.ts`): server validation
+(`lib/crm/inquiry-input.ts`), honeypot, D1 rate limit (8 per 10 min per IP, 5 per hour per email), inquiry saved before any success
+message, reference ID returned, notification emails sent from the outbox with retry. No prices are generated. See BOOKING_SYSTEM.md.
 
 ## 8. Configuration (build-time env)
 

@@ -424,3 +424,15 @@ select.fld { appearance: none; background-image: url("data:image/svg+xml,%3Csvg 
   .map-route { stroke-dashoffset: 0; }
   .steps::before { transform: none; }
 }
+
+/* ── Booking form additions ───────────────────────────────── */
+.ferr { color: #9b2c2c; font-size: 0.82rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.fld[aria-invalid="true"] { border-color: #9b2c2c; }
+.phone-row { display: grid; gap: 16px; } @media (min-width: 560px) { .phone-row { grid-template-columns: 0.9fr 1.4fr; } }
+.consent { align-items: flex-start; }
+.consent input { margin-top: 3px; flex: none; }
+.consent a { text-decoration: underline; }
+.prose { max-width: 70ch; display: grid; gap: 16px; }
+.prose h2 { font-family: var(--font-display); font-size: 1.7rem; margin-top: 16px; }
+.prose ul { list-style: disc; padding-left: 20px; display: grid; gap: 6px; }
+.prose a { text-decoration: underline; }

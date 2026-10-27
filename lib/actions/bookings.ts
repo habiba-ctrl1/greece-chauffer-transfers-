@@ -8,6 +8,8 @@ import { generateId } from "@/lib/utils";
 import { getCurrentUser } from "@/lib/auth/session";
 import { recordActivity } from "@/lib/actions/activity";
 import { BOOKING_STATUSES } from "@/lib/constants";
+import { requireAdmin } from "@/lib/auth/guard";
+
 import type {
 	Booking,
 	BookingStatus,
@@ -86,6 +88,7 @@ async function generateBookingNumber(db: D1Database): Promise<string> {
 export async function getBookings(
 	filter: GetBookingsFilter = {}
 ): Promise<GetBookingsResult> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const page = Math.max(1, filter.page || 1);
@@ -203,6 +206,7 @@ export interface BookingDetailResult {
  * Get full booking detail including customer, driver, vehicle, and status timeline.
  */
 export async function getBookingById(id: string): Promise<BookingDetailResult | null> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const query = `
@@ -285,6 +289,7 @@ export interface BookingActionResult {
  * Create a new booking with initial status history and activity record.
  */
 export async function createBooking(data: CreateBookingData): Promise<BookingActionResult> {
+	await requireAdmin();
 	if (!data.customer_id) {
 		return { success: false, error: "Customer is required." };
 	}
@@ -374,6 +379,7 @@ export async function updateBooking(
 	id: string,
 	data: Partial<CreateBookingData>
 ): Promise<BookingActionResult> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const now = new Date().toISOString();
@@ -451,6 +457,7 @@ export async function updateBookingStatus(
 	newStatus: BookingStatus,
 	notes?: string
 ): Promise<BookingActionResult> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const user = await getCurrentUser();
@@ -508,6 +515,7 @@ export async function assignBookingDriverAndVehicle(
 	driverId: string | null,
 	vehicleId: string | null
 ): Promise<BookingActionResult> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const user = await getCurrentUser();
@@ -573,6 +581,7 @@ export async function assignBookingDriverAndVehicle(
  * Fetch active drivers for dispatch assignment dropdowns.
  */
 export async function getActiveDrivers(): Promise<Driver[]> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const { results } = await db
@@ -588,6 +597,7 @@ export async function getActiveDrivers(): Promise<Driver[]> {
  * Fetch active/available vehicles for dispatch assignment dropdowns.
  */
 export async function getAvailableVehicles(): Promise<Vehicle[]> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const { results } = await db
@@ -610,6 +620,7 @@ export async function getScheduleBookings(
 	toDate: string,
 	limit = 50
 ): Promise<BookingWithDetails[]> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const { results } = await db
@@ -648,6 +659,7 @@ export async function getScheduleBookings(
  * to guard against missing keys.
  */
 export async function getBookingPipelineCounts(): Promise<Record<BookingStatus, number>> {
+	await requireAdmin();
 	const zeroed = Object.fromEntries(
 		BOOKING_STATUSES.map((s) => [s, 0])
 	) as Record<BookingStatus, number>;
@@ -684,6 +696,7 @@ export interface PendingSettlementBooking {
  * UI exists yet, so this is the closest real signal available today).
  */
 export async function getPendingSettlementBookings(limit = 50): Promise<PendingSettlementBooking[]> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const { results } = await db
@@ -726,6 +739,7 @@ export interface OperationalConflict {
  * assignment.
  */
 export async function getOperationalConflicts(limit = 10): Promise<OperationalConflict[]> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);

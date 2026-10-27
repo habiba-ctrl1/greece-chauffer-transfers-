@@ -1,4 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { injectEnv } from "@/lib/env";
 
 /**
  * Get the D1 database instance from Cloudflare context.
@@ -6,6 +7,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
  */
 export async function getDb(): Promise<D1Database> {
 	const { env } = await getCloudflareContext({ async: true });
+	injectEnv(env);
 	return env.DB;
 }
 

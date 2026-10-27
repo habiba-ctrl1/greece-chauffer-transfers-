@@ -19,7 +19,7 @@ export const CONTACT = {
   /** digits only, international format, e.g. 306900000000 */
   whatsapp: clean(process.env.NEXT_PUBLIC_WHATSAPP_NUMBER)?.replace(/\D/g, ""),
   phone: clean(process.env.NEXT_PUBLIC_PHONE),
-  email: clean(process.env.NEXT_PUBLIC_CONTACT_EMAIL),
+  email: clean(process.env.NEXT_PUBLIC_CONTACT_EMAIL) ?? "greecechauffertransfers@gmail.com",
 };
 
 export const whatsappHref = (text = "Hello, I'd like a quote for a private transfer in Greece.") =>

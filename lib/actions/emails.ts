@@ -4,19 +4,10 @@
 "use server";
 
 import { getDb } from "@/lib/db";
-import { generateId, formatCurrency, formatDate } from "@/lib/utils";
-import { getCurrentUser } from "@/lib/auth/session";
-import { recordActivity } from "@/lib/actions/activity";
-import { getCompanySettings } from "@/lib/actions/settings";
-import { getQuoteById, updateQuoteStatus } from "@/lib/actions/quotes";
-import { getBookingById } from "@/lib/actions/bookings";
-import {
-	dispatchEmail,
-	wrapInLuxuryEmailTemplate,
-	interpolateTemplate,
-} from "@/lib/email/dispatcher";
+import { generateId } from "@/lib/utils";
+import { requireAdmin } from "@/lib/auth/guard";
+import { sendBookingConfirmationAction, sendQuotationAction } from "@/lib/actions/inquiries";
 import type { EmailLog, EmailTemplate } from "@/lib/schema";
-import { revalidatePath } from "next/cache";
 
 export interface GetEmailLogsFilter {
 	related_type?: "quote" | "booking" | "invoice";
@@ -36,6 +27,7 @@ export interface GetEmailLogsResult {
  * Seed default email templates if table is empty.
  */
 export async function ensureDefaultEmailTemplates(): Promise<void> {
+	await requireAdmin();
 	try {
 		const db = await getDb();
 		const count = await db
@@ -162,6 +154,7 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
  * Fetch all registered email templates.
  */
 export async function getEmailTemplates(): Promise<EmailTemplate[]> {
+	await requireAdmin();
 	await ensureDefaultEmailTemplates();
 	const db = await getDb();
 	const rows = await db
@@ -176,6 +169,7 @@ export async function getEmailTemplates(): Promise<EmailTemplate[]> {
 export async function getEmailLogs(
 	filter: GetEmailLogsFilter = {}
 ): Promise<GetEmailLogsResult> {
+	await requireAdmin();
 	const db = await getDb();
 	const page = Math.max(1, filter.page || 1);
 	const limit = Math.min(100, Math.max(1, filter.limit || 20));
@@ -222,117 +216,13 @@ export async function getEmailLogs(
 }
 
 /**
- * Send quotation proposal to customer via email.
+ * Send a quotation to the customer. Delegates to the outbox-backed pipeline
+ * (frozen snapshot + PDF attachment + retry), so legacy callers get the same guarantees.
  */
-export async function sendQuoteEmail(
-	quoteId: string
-): Promise<{ success: boolean; error?: string }> {
-	try {
-		await ensureDefaultEmailTemplates();
-		const db = await getDb();
-		const quote = await getQuoteById(quoteId);
-
-		if (!quote) {
-			return { success: false, error: "Quote not found" };
-		}
-
-		if (!quote.customer_email?.trim()) {
-			return { success: false, error: "Customer does not have a valid email address on file." };
-		}
-
-		const settings = await getCompanySettings();
-
-		// Fetch template
-		const template = await db
-			.prepare("SELECT * FROM email_templates WHERE slug = 'quote_sent' AND is_active = 1")
-			.first<EmailTemplate>();
-
-		const variables: Record<string, string> = {
-			customer_name: quote.customer_name || "Valued Client",
-			quote_number: quote.quote_number,
-			pickup_date: quote.pickup_date ? formatDate(quote.pickup_date) : "TBD",
-			pickup_time: quote.pickup_time || "TBD",
-			pickup_location: quote.pickup_location || "Athens, Greece",
-			dropoff_location: quote.dropoff_location || "Destination, Greece",
-			vehicle_category: quote.vehicle_category || "Executive Sedan",
-			passenger_count: String(quote.passenger_count || 1),
-			luggage_info: quote.luggage_info || "Standard luggage",
-			total_amount: formatCurrency(quote.total),
-			valid_until: quote.valid_until ? formatDate(quote.valid_until) : "7 days",
-			company_phone: settings.company_phone || "+30 210 000 0000",
-			company_name: settings.company_name || "Greece Chauffeur Service",
-		};
-
-		const subject = template
-			? interpolateTemplate(template.subject, variables)
-			: `Executive Chauffeur Quotation ${quote.quote_number} — Greece Chauffeur Service`;
-
-		const rawHtml = template
-			? interpolateTemplate(template.body_html, variables)
-			: `<h2>Dear ${variables.customer_name},</h2><p>Here is your quotation ${variables.quote_number} totaling ${variables.total_amount}.</p>`;
-
-		const finalHtml = wrapInLuxuryEmailTemplate(rawHtml, subject);
-
-		// Dispatch email
-		const dispatchRes = await dispatchEmail({
-			to: quote.customer_email.trim(),
-			toName: quote.customer_name,
-			subject,
-			html: finalHtml,
-		});
-
-		const logId = generateId();
-		const now = new Date().toISOString();
-
-		// Record in email_logs
-		await db
-			.prepare(
-				`INSERT INTO email_logs (
-					id, template_id, recipient_email, recipient_name, subject,
-					status, related_type, related_id, has_attachment, error_message, sent_at, created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-			)
-			.bind(
-				logId,
-				template?.id || null,
-				quote.customer_email.trim(),
-				quote.customer_name,
-				subject,
-				dispatchRes.success ? "sent" : "failed",
-				"quote",
-				quoteId,
-				0,
-				dispatchRes.error || null,
-				dispatchRes.success ? now : null,
-				now
-			)
-			.run();
-
-		if (dispatchRes.success) {
-			// Update quote status to 'sent' if it was 'draft'
-			if (quote.status === "draft") {
-				await updateQuoteStatus(quoteId, "sent", `Proposal emailed to ${quote.customer_email}`);
-			} else {
-				await recordActivity(
-					"quote.emailed",
-					"quote",
-					quoteId,
-					{ message: `Quotation sent via email to ${quote.customer_email}` }
-				);
-			}
-
-			revalidatePath("/admin/quotes");
-			revalidatePath(`/admin/quotes/${quoteId}`);
-			revalidatePath("/admin/emails");
-
-			return { success: true };
-		} else {
-			return { success: false, error: dispatchRes.error || "Failed to dispatch email" };
-		}
-	} catch (e) {
-		console.error("Error sending quote email:", e);
-		return { success: false, error: (e as Error).message || "Error sending quote email" };
-	}
+export async function sendQuoteEmail(quoteId: string): Promise<{ success: boolean; error?: string }> {
+	await requireAdmin();
+	const r = await sendQuotationAction(quoteId);
+	return { success: r.ok, error: r.error };
 }
 
 /**
@@ -341,101 +231,7 @@ export async function sendQuoteEmail(
 export async function sendBookingConfirmationEmail(
 	bookingId: string
 ): Promise<{ success: boolean; error?: string }> {
-	try {
-		await ensureDefaultEmailTemplates();
-		const db = await getDb();
-		const result = await getBookingById(bookingId);
-
-		if (!result || !result.booking) {
-			return { success: false, error: "Booking not found" };
-		}
-
-		const { booking } = result;
-
-		if (!booking.customer_email?.trim()) {
-			return { success: false, error: "Customer does not have an email address on file." };
-		}
-
-		const settings = await getCompanySettings();
-
-		const template = await db
-			.prepare("SELECT * FROM email_templates WHERE slug = 'booking_confirmed' AND is_active = 1")
-			.first<EmailTemplate>();
-
-		const variables: Record<string, string> = {
-			customer_name: booking.customer_name || "Valued Client",
-			booking_number: booking.booking_number,
-			pickup_date: booking.pickup_date ? formatDate(booking.pickup_date) : "TBD",
-			pickup_time: booking.pickup_time || "TBD",
-			pickup_location: booking.pickup_location || "Athens, Greece",
-			dropoff_location: booking.dropoff_location || "Destination, Greece",
-			flight_number: booking.flight_number || "N/A",
-			vehicle_category: booking.vehicle_category || "Executive Vehicle",
-			total_amount: formatCurrency(booking.total),
-			company_phone: settings.company_phone || "+30 210 000 0000",
-		};
-
-		const subject = template
-			? interpolateTemplate(template.subject, variables)
-			: `Reservation Confirmed: ${booking.booking_number} — Greece Chauffeur Service`;
-
-		const rawHtml = template
-			? interpolateTemplate(template.body_html, variables)
-			: `<h2>Dear ${variables.customer_name},</h2><p>Your reservation ${variables.booking_number} is confirmed.</p>`;
-
-		const finalHtml = wrapInLuxuryEmailTemplate(rawHtml, subject);
-
-		const dispatchRes = await dispatchEmail({
-			to: booking.customer_email.trim(),
-			toName: booking.customer_name,
-			subject,
-			html: finalHtml,
-		});
-
-		const logId = generateId();
-		const now = new Date().toISOString();
-
-		await db
-			.prepare(
-				`INSERT INTO email_logs (
-					id, template_id, recipient_email, recipient_name, subject,
-					status, related_type, related_id, has_attachment, error_message, sent_at, created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-			)
-			.bind(
-				logId,
-				template?.id || null,
-				booking.customer_email.trim(),
-				booking.customer_name,
-				subject,
-				dispatchRes.success ? "sent" : "failed",
-				"booking",
-				bookingId,
-				0,
-				dispatchRes.error || null,
-				dispatchRes.success ? now : null,
-				now
-			)
-			.run();
-
-		if (dispatchRes.success) {
-			await recordActivity(
-				"booking.confirmation_emailed",
-				"booking",
-				bookingId,
-				{ message: `Booking confirmation emailed to ${booking.customer_email}` }
-			);
-
-			revalidatePath("/admin/bookings");
-			revalidatePath(`/admin/bookings/${bookingId}`);
-			revalidatePath("/admin/emails");
-
-			return { success: true };
-		} else {
-			return { success: false, error: dispatchRes.error || "Failed to dispatch email" };
-		}
-	} catch (e) {
-		console.error("Error sending booking confirmation email:", e);
-		return { success: false, error: (e as Error).message || "Failed to send confirmation email" };
-	}
+	await requireAdmin();
+	const r = await sendBookingConfirmationAction(bookingId);
+	return { success: r.ok, error: r.error };
 }
