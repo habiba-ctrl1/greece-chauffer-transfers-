@@ -51,3 +51,9 @@ The copy is written to avoid unsupported claims, but several sentences describe 
 - **OG / Twitter images:** none set. Social crawlers don't accept SVG. Export real photos (1200×630 JPG) per page and add `openGraph.images` in `app/(site)/services/[slug]/page.tsx`.
 - **Hero photos:** all are generated placeholders (see SERVICE_PAGES.md → Image requirements).
 - **Reviews / ratings / awards:** none used anywhere; no review schema.
+
+## hourly-chauffeur (added)
+- **Hourly and full-day availability** in Athens; any minimum duration (page says minimums are "confirmed in your quote").
+- Waiting is included in the plan; extensions on the day depend on the chauffeur's next booking.
+- Page deliberately says guides and entry tickets are not included.
+- The hub (`/services`) says "no payment is taken when you request a quote" and "we do not show prices online" — same quote-only assumption as above.

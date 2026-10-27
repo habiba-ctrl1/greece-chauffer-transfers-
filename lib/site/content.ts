@@ -29,6 +29,8 @@ export interface Service {
   bestFor: string[];
   related: string[]; // destination slugs
   quoteService: string; // value used by the quote form
+  /** Listed on /services and in the footer, but not in the six-card homepage grid */
+  secondary?: boolean;
 }
 
 export const SERVICES: Service[] = [
@@ -88,6 +90,21 @@ export const SERVICES: Service[] = [
     bestFor: ["Business travel", "Special occasions", "Visitors who prefer not to drive"],
     related: ["athens", "cape-sounion", "nafplio"],
     quoteService: "chauffeur",
+  },
+  {
+    slug: "hourly-chauffeur",
+    title: "Hourly Chauffeur Hire",
+    short: "A private driver by the hour or for a full day, with your stops planned in advance.",
+    cta: "Hourly Chauffeur",
+    image: "chauffeur",
+    icon: "chauffeur",
+    intro:
+      "A private vehicle and chauffeur reserved for a block of hours, so meetings, shopping and sightseeing connect without waiting for pickups.",
+    includes: ["Hours agreed in advance", "Several stops and waiting periods", "Same chauffeur and vehicle throughout", "Quote confirmed before travel"],
+    bestFor: ["Business days with several appointments", "Shopping and sightseeing", "Arrival days with meetings"],
+    related: ["athens", "cape-sounion"],
+    quoteService: "chauffeur",
+    secondary: true,
   },
   {
     slug: "intercity-transfers",

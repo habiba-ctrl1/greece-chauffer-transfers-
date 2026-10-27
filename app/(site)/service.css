@@ -162,3 +162,13 @@
 
 /* Timeline: variable column count; steps without icons */
 @media (min-width: 900px) { .steps { grid-template-columns: repeat(var(--cols, 4), 1fr); } }
+
+/* Services hub: journey-type groups */
+.hub-groups { display: grid; gap: 56px; margin-top: 8px; }
+.hub-group { display: grid; gap: 24px; }
+@media (min-width: 960px) { .hub-group { grid-template-columns: 0.8fr 1.6fr; gap: 56px; align-items: start; } }
+.hub-group-head { display: grid; gap: 8px; }
+.hub-group-head h3 { font-family: var(--font-display); font-weight: 500; font-size: 1.9rem; line-height: 1.1; }
+.hub-group-head p:last-child { color: var(--muted); }
+.hub-group .ruled li { grid-template-columns: 1fr; }
+@media (min-width: 860px) { .hub-group .ruled li { grid-template-columns: 40px 1fr 1.3fr 150px; } }

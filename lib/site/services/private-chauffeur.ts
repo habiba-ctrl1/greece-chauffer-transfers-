@@ -110,7 +110,7 @@ export const privateChauffeur: ServicePage = {
   related: [
     { slug: "private-tours", note: "A chauffeur-driven day to landmarks beyond Athens." },
     { slug: "corporate-transportation", note: "Executive travel and multi-vehicle programmes." },
-    { slug: "intercity-transfers", note: "One-way journeys between cities." },
+    { slug: "hourly-chauffeur", note: "A driver booked by the hour, with your stops planned in advance." },
   ],
   closing: { title: "Tell Us About", em: "Your Day.", text: "Send the date, the places and the hours you need. We reply with a tailored quote for your chauffeur." },
 };

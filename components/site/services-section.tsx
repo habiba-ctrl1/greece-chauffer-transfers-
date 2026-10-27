@@ -17,6 +17,7 @@ export function ServicesSection() {
         </SectionHeading>
         <div className="svc-grid">
           {SERVICES
+            .filter((s) => !s.secondary)
             .map((s, i) => (
               <Reveal key={s.slug} delay={(i % 2) * 100} className="svc-cell">
                 <ServiceCard service={s} index={i} />
